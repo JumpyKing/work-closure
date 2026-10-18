@@ -33,9 +33,9 @@ WORK_CLOSURE_V2_PRESENT
 6. 审查：
    - S/M：审查者拿到基准对应的 diff、工作单与验收标准，可按需只读相关文件，不整库通读；修复后只审上次已审基准到新基准的增量 diff。M 级两路互相看不到对方意见。
    - L：Sonnet 与 Grok 对同一冻结内容在各自隔离副本上独立审查，每一路各自满足 summary 门与报告门（定义见 `references/review.md`），两路不得共用任何一项证据；负载改动一字节即重新冻结并重新双审。
-   - 各级：任一路报告缺失、未明确 APPROVE/REVISE、所审基准不是当前基准，或经包装器的一路 summary 不符，即 `review_incomplete`，不得交付或标记完成。同一工作单同一验收范围审查最多三轮，轮次写检查点，第三轮后仍有未闭合阻断或实质问题即 `stopped_root_cause`。细则见 `references/review.md`。
+   - 各级：任一路报告缺失、未明确 APPROVE/REVISE、所审基准不是当前基准，或经包装器的一路 summary 不符，即 `review_incomplete`，不得交付或标记完成。同一工作单同一验收范围审查最多三轮，轮次写检查点，第三轮后仍有未闭合阻断或实质问题即 `stopped_root_cause`。一轮全部路线 APPROVE 即默认交付该轮基准，剩余可选意见记入待办；继续采纳就形成新基准，按规则复审并计轮次（APPROVE 但仍列出阻断或实质意见时不适用，见 review.md 通过后一条）。细则见 `references/review.md`。
 7. 按需外部步骤：UI 验证使用宿主可用的浏览器工具（例如 Claude 内置浏览器、Codex 的浏览器工具），都没有时置 `waiting_capability`，其余独立步骤继续；部署、发送等外部动作只在用户明确授权后执行。
-8. 收口：按本次约定的范围与证据层级交付。未授权部署不妨碍本地范围交付，但报告必须写明证据来自本地验证（如本地测试与审查记录），不得报告"已上线"或冒充部署证据。全部通过后状态置 `verified` 并归档证据；指定由某个模型完成的步骤无法确认能力即 `blocked`，主对话不得代写冒充。
+8. 收口：按本次约定的范围与证据层级交付。未授权部署不妨碍本地范围交付，但报告必须写明证据来自本地验证（如本地测试与审查记录），不得报告"已上线"或冒充部署证据。置 `verified` 前按 `references/review.md` 的交付前核对，确认每个交付基准都有对应的全部 APPROVE；有未被覆盖的交付内容即 `review_incomplete`，并在检查点写明已通过与未闭合的范围。全部通过后状态置 `verified` 并归档证据，确认本任务的审查检出已按 review.md 移除；指定由某个模型完成的步骤无法确认能力即 `blocked`，主对话不得代写冒充。
 
 ## 状态
 
@@ -57,3 +57,4 @@ WORK_CLOSURE_V2_PRESENT
 - `references/work-order.md`：工作单与检查点字段、账本位置、执行纪律，以及仅限本 Skill 安装维护时使用的条件段落（包装器四情形、安装负对照、安装后发现）。
 - `references/review.md`：S/M 的 diff 审查，L 级的冻结清单、集合摘要算法与双审证据门，轮次预算与判定分级。
 - `scripts/run_cli.py`：唯一 CLI 包装器，仅标准库，负责证据落盘、模型校验与计划另存。
+- `scripts/test_run_cli.py`：包装器的回归测试（`python3 -I -B scripts/test_run_cli.py`），只在 `scripts/run_cli.py` 有改动时运行（见 `references/work-order.md` 条件段落）。

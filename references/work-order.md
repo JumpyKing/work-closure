@@ -19,6 +19,46 @@ task_id、workspace、级别与理由、计划版本、产物身份（S/M 为 co
 
 已有项目业务账本不必为逐路审查记录改 schema：主对话可用既有字段表达，或以旁挂证据文件承载该记录，保持检查点单写与项目权威不变。
 
+新建的独立账本（项目没有自己的账本时）用下例的键名，值按任务填写，`status` 取 SKILL.md "状态"一节的取值之一。原因：换模型、代理或对话后要按同一结构恢复，各任务各起键名会让恢复靠猜。
+
+```json
+{
+  "task_id": "wc-20261018-example",
+  "workspace": "本次真实任务目录的绝对路径",
+  "level": "S",
+  "level_reason": "定级理由",
+  "status": "executing",
+  "plan_version": "v1",
+  "start_point": "base commit，或改动前备份目录",
+  "artifact_identity": "当前基准：commit SHA，或逐文件 SHA256 清单的路径",
+  "verified": [],
+  "missing_evidence": [],
+  "review": {
+    "rounds_used": 1,
+    "records": [
+      {
+        "round": 1,
+        "role": "A",
+        "route": "Agent 工具 sonnet",
+        "basis": "所审基准",
+        "report": "报告路径",
+        "report_sha256": "报告的 SHA256",
+        "summary": null,
+        "verdict": "APPROVE",
+        "disposition": "意见处置"
+      }
+    ]
+  },
+  "next_action": "下一动作",
+  "unknown_side_effects": [],
+  "follow_ups": [],
+  "stop_loss": {"by_issue": {}, "by_operation": {}, "history": []},
+  "updated_utc": "2026-10-18T00:00:00Z"
+}
+```
+
+`summary` 只在经包装器的一路填 summary 路径，Agent 工具路线为 null。L 级的逐文件清单路径与集合摘要写在 `artifact_identity`；默认交付后记入待办的可选意见写在 `follow_ups`。
+
 检查点是唯一权威状态源：换模型、代理或对话后先读检查点再行动。止损只看连续失败：同一问题连续修复加复验失败 3 轮、或同一操作连续 3 次失败即停止并做根因分析；连续计数只能在同一验收项实际通过并附证据后清零，总尝试历史保留；换模型、代理或对话都不能清零。
 
 ## 账本位置
@@ -45,6 +85,6 @@ task_id、workspace、级别与理由、计划版本、产物身份（S/M 为 co
 
 以下步骤只在本 Skill 自身安装、更新或修复时执行，普通项目任务不做，也不作为收口条件：
 
-- 包装器四情形：仅在 `scripts/run_cli.py` 本身有改动时执行。用受控的假事件流验证 `scripts/run_cli.py` 的四类行为——同事件精确匹配通过、model/provider 拆分事件判 `model_mismatch`、模型明确不符立即终止子进程并始终返回 3（真实 child 状态放 `child_exit_code`）、无任何模型事件返回 3。其中"无事件返回 3"的用例前提是子进程自身退出 0；子进程自身非零退出时属于自然非零退出，包装器原样透传真实退出码（既有测试覆盖无模型事件且退出 7 时保留 7）。
+- 包装器四情形：仅在 `scripts/run_cli.py` 本身有改动时执行 `python3 -I -B scripts/test_run_cli.py`（`-B` 避免在 Skill 目录写入字节码），全部通过才算完成。该测试用假子进程覆盖四类行为（同事件精确匹配通过、model/provider 拆分事件判 `model_mismatch`、模型明确不符立即终止子进程并返回 3 且真实 child 状态放 `child_exit_code`、无任何模型事件且子进程退出 0 时返回 3），以及子进程退出 7 原样透传、信号终止与进程组清理。
 - 安装前负对照：仅首次安装时执行。目标安装位置已存在本 Skill 时停止；负对照提示必须返回 `WORK_CLOSURE_ABSENT`。
 - 安装或更新后发现：三份副本 `~/.cursor/skills/work-closure`、`~/.agents/skills/work-closure`、`~/.claude/skills/work-closure` 逐文件 SHA256 一致，且与审查通过的版本一致；同一提示启动的新进程必须返回 `WORK_CLOSURE_V2_PRESENT`。

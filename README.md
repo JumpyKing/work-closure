@@ -39,7 +39,7 @@ Cursor 克隆到 `~/.cursor/skills/work-closure`，Codex 克隆到 `~/.agents/sk
 
 装好后按自己的机器调整：
 
-- `references/routes.md`：`claude`、`cursor-agent`、`zcode` 可执行文件与包装器 `run_cli.py` 的位置，以及模型 ID、显示标签、ZCode provider。模型信息按 2026 年 10 月实测写定，换账号或模型目录变化后需要更新。
+- `references/routes.md`：`claude`、`cursor-agent`、`zcode` 可执行文件的位置，以及模型 ID、显示标签、ZCode provider。包装器按 Skill 目录内的 `scripts/run_cli.py` 调用，不用改。模型信息按 2026 年 10 月实测写定，换账号或模型目录变化后需要更新。
 - `references/work-order.md`：账本目录 `~/.cursor/work-closure/tasks/` 与 `rtk` 的位置。
 
 这些路径会作为 Python subprocess 的参数数组直接执行，`~` 不会被展开，请改成你机器上的绝对路径。
@@ -52,9 +52,10 @@ Cursor 克隆到 `~/.cursor/skills/work-closure`，Codex 克隆到 `~/.agents/sk
 
 - `SKILL.md`：入口，含定级、8 步闭环、状态、止损与路由。
 - `references/routes.md`：路线预检、各 CLI 的真实 argv 与模型校验规则。
-- `references/review.md`：S/M 的 diff 审查，L 级的冻结清单与双审证据门，审查轮次预算。
+- `references/review.md`：S/M 的 diff 审查，L 级的冻结清单与双审证据门，审查轮次预算，以及一轮全部 APPROVE 后默认交付的规则。
 - `references/work-order.md`：工作单与检查点字段、账本位置、执行纪律。
-- `scripts/run_cli.py`：唯一的 CLI 包装器。
+- `scripts/run_cli.py`：唯一的 CLI 包装器；收到 SIGTERM、SIGHUP 或 SIGINT 时清理子进程组，仍写出 summary。
+- `scripts/test_run_cli.py`：包装器的回归测试，只用标准库和假子进程，不调用真实模型 CLI；运行 `python3 -I -B scripts/test_run_cli.py`，约 30 秒。
 
 ## 许可证
 

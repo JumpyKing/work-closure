@@ -4,10 +4,11 @@
 
 - 基准：只把工作单白名单内、自检通过的文件提交到任务分支，以该 commit SHA 为基准；负载不在 git 中或未获提交授权时，以改后文件的逐文件 SHA256 清单为基准，并留存起点备份。起点（base commit 或改动前备份）与基准一起写入检查点。
 - 输入：起点到基准的 diff、工作单与验收标准。diff 必须如实反映文件内容，不得改写内容行（非 git 负载可用 `git diff --no-index` 生成）；diff 随审查提示传入，过长时写入审查 workspace 内的文件，提示里给出路径。审查者可按需只读相关文件核对上下文，不整库通读。
-- workspace：审查 workspace 为基准的干净检出，不含被 .gitignore 忽略的本地凭据与配置：git 负载在账本目录下用 `git worktree add --detach` 检出基准 commit，非 git 负载为白名单文件的副本目录。diff 文件放在检出内；报告保存在检出之外的账本中。
+- workspace：审查 workspace 为基准的干净检出，不含被 .gitignore 忽略的本地凭据与配置：git 负载在账本目录下用 `git worktree add --detach` 检出基准 commit，非 git 负载为白名单文件的副本目录。diff 文件放在检出内，并在检出之外的账本另存一份；报告保存在检出之外的账本中。包装器证据目录（`--out`）也放在检出之外。git 检出在该轮审查进程结束、审查后核对完成、diff、报告与包装器证据都已存到检出之外后，用 `git worktree remove --force` 移除（检出内有放入的 diff 文件，不加 `--force` 会被拒绝；需要时可由基准 commit 重建），以免账本与业务仓库的 worktree 列表持续累积；非 git 负载的副本目录随任务证据保留；不清理其他任务或会话留下的检出。
 - 路线：审查 A 为 Sonnet；M 级另加审查 B 为 Grok，两路各自独立，互相看不到对方意见。Claude Code 宿主内 Sonnet 可用 Agent 工具指定模型；其他宿主经 `scripts/run_cli.py` 调本机 `claude` CLI。Grok 经 `scripts/run_cli.py` 调 cursor-agent。argv 见 `references/routes.md`。经包装器的一路仍须 summary `status=ok`、`exit_code=0`、`model_match=true`。Agent 工具路线没有工具级只读保证，主对话在审查前后各核对一次审查检出未变（git 检出看 HEAD 等于基准且 `git status` 除放入的 diff 文件外无改动，副本目录看文件 SHA256 清单），变了即 `review_incomplete`。
 - 报告：明确 APPROVE/REVISE，并列出意见或明确写出未发现问题。主对话把每一路报告原样存入账本，记录报告路径、报告 SHA256 与所审基准；报告与基准的对应关系由主对话按发出的 diff 记录，不要求审查者抄写哈希。
 - 修复后：重新提交（或重算文件 SHA256 清单）得到新基准，只把上次已审基准到新基准的增量 diff 交给本级全部审查路线复审；增量复审同样计一轮。定级升级时，新增的审查路线审起点到当前基准的全量 diff；升到 L 级按 L 重新冻结并两路全量审查。
+- 通过后：一轮全部路线 APPROVE 时，默认交付该轮基准，剩余可选意见记入待办，不再为可选意见改动负载；报告虽判 APPROVE 但仍列出阻断或实质意见时不适用，先按判定分级处理。原因：可选改动同样可能引入回归，改了就要再审，而复审几乎每轮都会带出新的可选意见，继续采纳只会耗尽轮次而不收敛。确需采纳时，改动形成新基准，按上条增量复审并计轮次；L 级任意字节变化仍按 L 重新冻结与双审。
 - 交付前核对：实际交付的 commit SHA（或交付文件的逐文件 SHA256）必须等于最后一轮全部 APPROVE 所对应的基准，不符即 `review_incomplete`。
 
 ## L：冻结清单
