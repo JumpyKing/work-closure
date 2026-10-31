@@ -50,7 +50,7 @@ Cursor 克隆到 `~/.cursor/skills/work-closure`，Codex 克隆到 `~/.agents/sk
 
 ## 目录
 
-- `SKILL.md`：入口，含定级、8 步闭环、状态、止损与路由。
+- `SKILL.md`：入口，含目标锁、定级、8 步闭环、状态、止损与路由。
 - `references/routes.md`：路线预检、各 CLI 的真实 argv 与模型校验规则。
 - `references/review.md`：S/M 的 diff 审查，L 级的冻结清单与双审证据门，审查轮次预算，以及一轮全部 APPROVE 后默认交付的规则。
 - `references/work-order.md`：工作单与检查点字段、账本位置、执行纪律。
