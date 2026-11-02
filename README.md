@@ -10,7 +10,7 @@ work-closure 是一套多模型交付闭环 Skill：立项定级、规划、实�
 
 | 级别 | 条件（命中任一即是） | 实现 | 审查 |
 | --- | --- | --- | --- |
-| L | 改鉴权、资金、密钥、数据、部署或 CI 配置；多里程碑任务 | GLM（经 ZCode） | Sonnet 与 Grok 两路，完整证据门 |
+| L | 改鉴权、资金、密钥、数据、部署或 CI 配置；多里程碑任务 | GLM（经 ZCode）；运维演练可由主对话直接写 | Sonnet 与 Grok 两路，完整证据门 |
 | M | 改对外接口或健康检查端点；跨两个以上相互独立的功能区 | 主对话或 1 个子代理，改动量大时交给 GLM | Sonnet 与 Grok 两路，审同一份 diff |
 | S | 不命中 L、M 条件 | 主对话或 1 个子代理 | Sonnet 一路，只审 diff |
 
@@ -50,7 +50,7 @@ Cursor 克隆到 `~/.cursor/skills/work-closure`，Codex 克隆到 `~/.agents/sk
 
 ## 目录
 
-- `SKILL.md`：入口，含目标锁、定级、8 步闭环、状态、止损与路由。
+- `SKILL.md`：入口，含目标锁、派工约束、定级、8 步闭环、状态、止损与路由。
 - `references/routes.md`：路线预检、各 CLI 的真实 argv 与模型校验规则。
 - `references/review.md`：S/M 的 diff 审查，L 级的冻结清单与双审证据门，审查轮次预算，以及一轮全部 APPROVE 后默认交付的规则。
 - `references/work-order.md`：工作单与检查点字段、账本位置、执行纪律。
