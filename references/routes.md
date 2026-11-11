@@ -1,6 +1,8 @@
 # routes — 模型路由与 CLI 包装
 
-除 S/M 在 Claude Code 宿主内用 Agent 工具指定 Sonnet 审查这一条路线外，所有 `claude` CLI、cursor-agent 与 ZCode 调用一律经过本 Skill 目录下的包装器 `scripts/run_cli.py`（三份安装副本逐字节一致，各宿主用自己那份，绝对路径为加载本 SKILL.md 的目录加 `scripts/run_cli.py`），由它原样落盘证据并校验实际 provider/model。Agent 工具路线不经包装器，模型由宿主保证，报告由主对话原样存入账本，只读核对见 `references/review.md`。规划与审查均为只读，不具有业务写权限。每次包装器调用使用本次全新的唯一证据目录；包装器对已存在且含文件的证据目录拒绝覆盖。
+宿主原生执行入口不经包装器：按宿主提供的入口显式选择 DeepSeek、Sonnet 或 GPT Terra，记录运行归属证据，并仅在工作单授权的文件范围内写入；宿主主对话已是所选模型时可直接执行。复用现成入口，不编造命令。新模型 CLI 仅在已核实可调用且事件可由现有包装器校验时使用。
+
+所有 `claude` CLI、cursor-agent 与 ZCode 调用一律经过本 Skill 目录下的包装器 `scripts/run_cli.py`（三份安装副本逐字节一致，各宿主用自己那份，绝对路径为加载本 SKILL.md 的目录加 `scripts/run_cli.py`），由它原样落盘证据并校验实际 provider/model。宿主原生审查路线不经包装器，模型由宿主保证，报告由主对话原样存入账本，只读核对见 `references/review.md`。规划与审查均为只读，不具有业务写权限。每次包装器调用使用本次全新的唯一证据目录；包装器对已存在且含文件的证据目录拒绝覆盖。
 
 ## 立项预检
 
@@ -8,14 +10,14 @@
 
 - `claude` CLI：`~/.local/opt/node-v24.16.0-darwin-arm64/bin/claude --version` 能执行；首次使用或 CLI 升级后，经包装器跑一次只回一个词的 canary，确认 summary `model_match=true`。
 - cursor-agent：`~/.local/bin/cursor-agent --list-models` 的输出包含本次请求的模型 ID。
-- ZCode：`~/.local/bin/zcode` 能执行，profile 文件存在且字段完整。
+- ZCode：仅选择 ZCode/GLM 路线时检查 `~/.local/bin/zcode` 能执行，profile 文件存在且字段完整。
 
-预检不通过时，在立项阶段换用已核实的路线或置 `blocked`，并写入检查点。
+未选择的模型或可选工具不可用不阻断已选可用路线。所选路线预检不通过时，在用户授权范围内选择已核实路线；指定模型无法验证时置 `blocked`，准确记录原因。
 
 ## 角色与精确模型 ID
 
 - 规划（仅 L 级且宿主主模型不是 Opus）：本机 `claude` CLI，模型 `claude-opus-5-5`，`--expect-model claude-opus-5-5`。
-- 实现（L 级，或改动量大的 M 级）：ZCode，模型 `GLM-5.3-Flash`，provider `account:bigmodel-individual-coding-plan`。
+- 实现：按任务和宿主可用配置从 DeepSeek、Sonnet、GPT Terra 中选择，GLM 保留为可选；用户指定时遵循用户。仅选择 ZCode/GLM 路线时使用下方既有 profile。
 - 审查 A：Sonnet。经包装器时用本机 `claude` CLI，模型 `claude-sonnet-5-5`，`--expect-model claude-sonnet-5-5`；S/M 在 Claude Code 宿主内也可用 Agent 工具指定 Sonnet。
 - 审查 B（M/L）：cursor-agent，请求模型 `grok-4.7-high`；`--expect-model Grok 4.7 256K High`（来源：真实 init 记录），`--cursor-model-alias "Grok 4.7  High"`（来源：当前 CLI 目录；`4.7` 后为两个 ASCII 空格）。
 - UI：宿主可用的浏览器工具；都没有时该步骤置 `waiting_capability`，其余独立步骤继续。
@@ -30,13 +32,15 @@ cursor-agent 的 `--model` 取 CLI 请求 slug，而其 system/init 事件中的
 
 可执行文件 `~/.local/opt/node-v24.16.0-darwin-arm64/bin/claude`（2026-10-16 canary 所用版本 2.1.283）。用 Python subprocess 参数数组经包装器调用，禁止 shell=True、shell 拼接或字符串模板替换。argv 依次为：`--print`、从 UTF-8 文件读出的本次已保存工作单字符串、`--model`、该角色精确模型 ID、`--tools`、`Read,Grep,Glob`、`--restricted`、`--strict-mcp-config`、`--no-session-persistence`、`--output-format`、`stream-json`、`--verbose`。工作单字符串必须紧跟在 `--print` 之后：`--tools` 接受多个值，放在它后面的位置参数会被当成工具名吞掉。
 
+本段只读参数仅用于规划和审查，不作为 Sonnet 写代码的执行参数。
+
 该 CLI 没有 workspace 参数，以启动包装器时的进程工作目录作为 workspace：规划为本次真实任务目录；审查在 L 级为该路的隔离冻结副本，在 S/M 为基准的干净检出（见 `references/review.md`）。`--restricted` 去掉执行命令或代码的内置工具，把文件工具限制在工作目录内，并忽略用户、项目与本地 settings；`--strict-mcp-config` 跳过 MCP 服务器；`--tools Read,Grep,Glob` 只保留只读文件工具；三者共同保证规划与审查只读。模型校验用缺省字段规则：system/init 事件的 `model` 字段与 `--expect-model` 逐字相等，不传 `--cursor-model-alias`。
 
 ## cursor-agent 调用（Grok 审查）
 
 可执行文件 `~/.local/bin/cursor-agent`。已实际核对 `cursor-agent --help`：`--mode` 的取值为 `plan` 与 `ask`，`plan` 是只读规划，`ask` 是只读问答。用 Python subprocess 参数数组调用，禁止 shell=True、shell 拼接或字符串模板替换。argv 依次为：`--trust`、`--mode`、`ask`、`--model`、该角色精确请求模型 ID、`--workspace`、本次真实工作目录、`--print`、从 UTF-8 文件读出的本次已保存工作单字符串、`--output-format`、`stream-json`。Grok 审查用 `--mode ask` 以产出直接审查报告，只读，不具有业务写权限。审查 workspace：L 级为该路隔离的冻结副本目录，S/M 为基准的干净检出；都不得包含另一路报告。报告来源兼容 `plan.md` 是为了兼容真实既有记录与异常协议形式，不要求故意用 `plan` 模式做审查。工作单字符串由调用方读出本次真实工作单文件内容后作为参数值传入，不传文件路径；包装器参数（label、requested-model、expect-model、out）由本次真实 workspace、已保存工作单与本次唯一证据目录生成，不得引用临时候选目录或固定占位路径。不修改全局配置。
 
-## ZCode 调用（实现者 GLM）
+## ZCode 调用（可选 GLM 实现路线）
 
 可执行文件 `~/.local/bin/zcode`。argv 依次为：`--cwd`、实际候选工作目录、`--prompt`、工作单字符串、`--output-format`、`stream-json`。使用默认 headless 权限入口，不传 resume 或 continue，不使用不存在的 `--model` 参数或被忽略的 `ZCODE_MODEL`。
 
