@@ -1,61 +1,134 @@
 # work-closure
 
-A multi-model delivery loop skill for Claude Code, Cursor and Codex. The host model grades each task as S, M or L, plans it, implements it (directly, or through GLM on ZCode), sends the change to independent reviewers (Claude Sonnet through the `claude` CLI, Grok through `cursor-agent`), runs falsifiable acceptance checks, and keeps a checkpoint with stop-loss rules. The skill text is written in Chinese.
+面向 Claude Code、Cursor 和 Codex 的 AI 编程任务交付技能。它把明确的交付目标组织成开工卡、实施、验收、独立审查和远端交付，并用检查点支持中断后的恢复。
 
-## 简介
+执行时先锁定目标、做法、交付范围和时间预算，按改动风险选择 S、M、L 三级流程。新增工作需要说明与验收的关系，完成标准和审查都通过后结束任务。
 
-work-closure 是一套多模型交付闭环 Skill：立项定级、规划、实现、自检、冻结、独立审查、按需外部步骤、收口，共 8 步。全程写检查点，同一问题连续失败 3 次即止损并做根因分析。
+## 开始一个任务
 
-按改动本身的风险分三级，从 L 往下判断，命中即停：
+适合有明确交付物、需要验收或独立审查的开发任务，以及依据已有检查点继续的未完成任务。普通问答、纯调研和没有验收标准的单一小改动不触发闭环。技能被发现后，仍需用户明确提出交付或恢复任务才会启动。
 
-| 级别 | 条件（命中任一即是） | 实现 | 审查 |
-| --- | --- | --- | --- |
-| L | 改鉴权、资金、密钥、数据、部署或 CI 配置；多里程碑任务 | GLM（经 ZCode）；运维演练可由主对话直接写 | Sonnet 与 Grok 两路，完整证据门 |
-| M | 改对外接口或健康检查端点；跨两个以上相互独立的功能区 | 主对话或 1 个子代理，改动量大时交给 GLM | Sonnet 与 Grok 两路，审同一份 diff |
-| S | 不命中 L、M 条件 | 主对话或 1 个子代理 | Sonnet 一路，只审 diff |
+可以直接给宿主这样的任务说明。
 
-定级后主对话在开工的第一条消息里用一句话写明级别与理由，不等确认即继续；只在拿不准是否属于 L，或级别取决于只有用户知道的事实时，才先问用户。完整规则见 `SKILL.md`。
+> 使用 work-closure，给 formatDuration 增加负数支持。验收覆盖负数、零和正数，并保持现有正数格式。交付到当前仓库的任务分支并开 PR。
 
-## 依赖
+主对话在调用工具前给出开工卡，并写入工作单和检查点。
 
-- 宿主：Claude Code、Cursor 或 Codex 之一。
-- Python 3：`scripts/run_cli.py` 只用标准库，负责调用外部模型 CLI、原样落盘证据并校验实际模型。
-- `claude` CLI：Sonnet 审查；宿主主模型不是 Opus 时，还用于 L 级的 Opus 规划。
-- `cursor-agent`：M、L 级的 Grok 审查。
-- ZCode 与 GLM：L 级实现，或改动量大的 M 级实现。
-- `rtk`：被委派模型发出的 shell 命令统一以 `rtk` 开头，见 `references/work-order.md`。
+| 开工卡内容 | 要写清的事项 |
+| --- | --- |
+| 原目标与做法 | 用户要得到什么，以及已经选定的做法 |
+| 完成标准 | 可以直接核对的检查，包括交付检查 |
+| 交付范围 | 远端、分支、PR/MR 或合并，以及部署是否在范围内 |
+| 现有行为 | 必须保留的行为，以及改动前的验证基线 |
+| 预计时间 | 本轮任务的挂钟预算 |
+| 级别 | S、M 或 L，以及定级理由 |
 
-只做 S 级任务时，有宿主和 Sonnet 审查路线即可使用。
+需要读取材料才能确认的内容先写“待核”，读取后补齐。新增工作要解释它解决哪项验收或现有行为问题。变更已锁定的目标、做法或完成标准，需要用户选择。
 
-## 安装
+## 按风险选择流程
 
-把仓库克隆到宿主的 Skill 目录，目录名保持 `work-closure`。Claude Code：
+从 L 向 S 判断，命中即采用该级别。提交、推送或正常 CI 发布本身不决定级别，具体外部动作按授权执行。
+
+| 级别 | 改动条件 | 规划与实现 | 独立审查 | 冻结基准 |
+| --- | --- | --- | --- | --- |
+| L | 鉴权、资金、密钥、数据、部署或 CI 配置，或多里程碑任务 | Opus 规划，宿主主模型已是 Opus 时内联规划；GLM 实现 | Sonnet 和 Grok，各自审查独立冻结副本 | 逐文件 SHA256 与集合摘要 |
+| M | 对外接口、健康检查端点，或跨两个以上相互独立的功能区 | 主对话规划；主对话或 1 个子代理实现，较大改动可交给 GLM | Sonnet 和 Grok，审同一份 diff | commit SHA；文件交付使用 SHA256 清单 |
+| S | 未命中 L、M 条件 | 主对话规划；主对话或 1 个子代理实现 | Sonnet，审 diff | commit SHA；文件交付使用 SHA256 清单 |
+
+L 级的运维演练及配套脚本可由主对话实现，接触生产前仍须完成 L 级双审。用户指定实现模型时采用用户指定的路线。拿不准是否命中 L，或定级依赖只有用户知道的事实时，先询问；发现更高风险后升级，已用审查轮次继续累计。
+
+完整定级规则和例外见 [SKILL.md](SKILL.md)。
+
+## 一次任务怎样完成
+
+1. **立项**。写开工卡、定级、确定可编辑范围，并预检本次需要的模型路线。
+2. **规划**。复用适用的已有计划，记录计划版本和下一动作。
+3. **实现**。按本级路线实施，只修改工作单允许的文件。
+4. **自检**。主对话独立执行与任务对应的验收，保存可复查结果。
+5. **冻结**。记录审查使用的 commit SHA 或文件哈希，使审查和交付绑定同一版本。
+6. **审查**。审查者只读检查，明确给出 APPROVE 或 REVISE。阻断问题修复后复验，其他意见按严重程度处理。
+7. **按需外部步骤**。执行已授权的 UI 验证、部署或其他外部动作。缺少 UI 能力时记录 `waiting_capability`，独立步骤继续推进。
+8. **交付与收口**。核对实际交付版本与通过审查的版本一致，更新检查点并报告结果。
+
+用户未指定交付形式时，默认推送任务分支并开 PR/MR。常规 Git 交付须在共享远端可核对，且 PR/MR 已开或已合并，才可标记 `verified`。只完成本地验证时保持 `executing`，报告具体缺少的交付步骤。部署，包括合并触发的自动发布，须有用户明确授权。
+
+没有共享远端或明确要求文件、补丁交付时，需要先把实际范围写入开工卡并确认。当前入口文件和引用文件在该例外的 `verified` 判定上仍有不一致，采用前需明确本次收口依据。
+
+## 审查、证据与止损
+
+S/M 使用冻结版本的 diff 审查，修复后审增量。L 使用独立冻结副本，任何字节变化都要重新冻结并双审。审查报告须明确结论并绑定对应版本。经 CLI 包装器运行的审查，还必须同时满足 `status=ok`、`exit_code=0`、`model_match=true`。主对话读取完整报告并处理意见后，才判定审查是否通过。
+
+一轮全部路线通过后，默认交付该轮基准；可选意见记录到待办。若继续改动，新的版本按规则重新审查。证据要求见 [冻结与审查](references/review.md)。
+
+| 停止条件 | 处理方式 |
+| --- | --- |
+| 同一问题连续修复并复验失败 3 轮，或同一操作连续失败 3 次 | 停止重试，做根因分析并报告最小下一步 |
+| 同一工作单、同一验收范围审查 3 轮后，仍有未闭合阻断或实质问题 | 停止继续审查，分析原因并重整方案 |
+| 累计工作时间超过预计时间的 1.5 倍，仍未完成 | 记录 `stopped_root_cause`，报告原因和最小下一步 |
+
+时间累计包含恢复、重新派工和换会话后的工作时段，扣除停下等待用户或隔夜的空档。审查轮次与连续失败次数分别记录，换模型或会话后继续累计。
+
+## 中断后继续
+
+在新会话中要求按原任务的 `checkpoint.json` 继续即可。主对话先重读原目标、交付范围、完成标准、冻结版本、审查记录和下一动作，再核对实际工作区与远端状态。
+
+项目已有账本时沿用项目位置。独立任务账本默认放在 `~/.cursor/work-closure/tasks/` 下的任务目录，`checkpoint.json` 由主对话单独写入。恢复沿用已有授权，涉及暂停的业务任务、后台自动化或新的外部动作时需核对对应授权。字段说明见 [工作单与检查点](references/work-order.md)。
+
+## 安装与环境配置
+
+选择正在使用的宿主，将仓库克隆到对应技能目录。先准备 Git 和 `rtk`，目标目录应尚不存在。
+
+Claude Code
 
 ```bash
-git clone https://github.com/JumpyKing/work-closure ~/.claude/skills/work-closure
+rtk git clone https://github.com/JumpyKing/work-closure.git "$HOME/.claude/skills/work-closure"
 ```
 
-Cursor 克隆到 `~/.cursor/skills/work-closure`，Codex 克隆到 `~/.agents/skills/work-closure`。
+Cursor
 
-装好后按自己的机器调整：
+```bash
+rtk git clone https://github.com/JumpyKing/work-closure.git "$HOME/.cursor/skills/work-closure"
+```
 
-- `references/routes.md`：`claude`、`cursor-agent`、`zcode` 可执行文件的位置，以及模型 ID、显示标签、ZCode provider。包装器按 Skill 目录内的 `scripts/run_cli.py` 调用，不用改。模型信息按 2026 年 10 月实测写定，换账号或模型目录变化后需要更新。
-- `references/work-order.md`：账本目录 `~/.cursor/work-closure/tasks/` 与 `rtk` 的位置。
+Codex
 
-这些路径会作为 Python subprocess 的参数数组直接执行，`~` 不会被展开，请改成你机器上的绝对路径。
+```bash
+rtk git clone https://github.com/JumpyKing/work-closure.git "$HOME/.agents/skills/work-closure"
+```
 
-## 使用
+| 依赖 | 使用场景 |
+| --- | --- |
+| Claude Code、Cursor 或 Codex | 作为宿主执行技能指令 |
+| `rtk` | 被委派模型发出的 shell 命令统一加此前缀，未专门支持的命令用 `rtk proxy` |
+| Python 3 | CLI 包装器使用标准库，负责调用、证据落盘和模型身份校验 |
+| `claude` CLI | Opus 规划和 Sonnet 审查；S/M 在 Claude Code 内可用原生 Agent 指定 Sonnet |
+| `cursor-agent` | M/L 的 Grok 审查 |
+| ZCode 与 GLM | 常规 L 级实现，以及采用该路线的较大 M 级改动 |
+| PM2 | 管理长任务进程，读取日志时使用 `--nostream` |
+| 宿主浏览器工具 | 任务需要 UI 验证时使用 |
 
-在宿主里提出一个有明确交付物的任务即可触发，例如"给 formatDuration 函数加负数支持，并跑现有单元测试"。主对话会先写明级别与理由，再按该级别走完闭环。普通问答、纯调研任务不会触发。
+使用前按实际机器配置 [模型路由](references/routes.md) 和 [工作单约定](references/work-order.md) 中的可执行文件路径、模型 ID、provider 与账本位置。仓库中的 `~` 路径用于表达主目录；Python subprocess 的参数数组需要实际绝对路径。模型 ID 和显示标签带有原环境的验证记录，实际运行前须按路由文件预检，并检查包装器的模型匹配结果。
 
-## 目录
+引用文件还保留了原作者的多宿主安装校验约定，以及 `~/.cursor/agents/work-conductor.md` 辅助 Agent 路径。这个辅助文件需要在使用该路线的环境中单独提供。安装维护时应按实际宿主核对这些环境约定。
 
-- `SKILL.md`：入口，含目标锁、派工约束、定级、8 步闭环、状态、止损与路由。
-- `references/routes.md`：路线预检、各 CLI 的真实 argv 与模型校验规则。
-- `references/review.md`：S/M 的 diff 审查，L 级的冻结清单与双审证据门，审查轮次预算，以及一轮全部 APPROVE 后默认交付的规则。
-- `references/work-order.md`：工作单与检查点字段、账本位置、执行纪律。
-- `scripts/run_cli.py`：唯一的 CLI 包装器；收到 SIGTERM、SIGHUP 或 SIGINT 时清理子进程组，仍写出 summary。
-- `scripts/test_run_cli.py`：包装器的回归测试，只用标准库和假子进程，不调用真实模型 CLI；运行 `python3 -I -B scripts/test_run_cli.py`，约 30 秒。
+## 仓库文件
+
+| 文件 | 内容 |
+| --- | --- |
+| [SKILL.md](SKILL.md) | 技能入口、目标锁、定级、执行步骤、状态与止损 |
+| [references/routes.md](references/routes.md) | 模型路线、CLI 参数、预检和包装器输出约定 |
+| [references/work-order.md](references/work-order.md) | 工作单、检查点、文件范围和安装维护检查 |
+| [references/review.md](references/review.md) | 冻结、审查、证据门和意见处理 |
+| [scripts/run_cli.py](scripts/run_cli.py) | CLI 调用包装器 |
+| [scripts/test_run_cli.py](scripts/test_run_cli.py) | 使用假子进程的包装器回归测试 |
+
+修改包装器时，在仓库根目录运行已有回归测试。
+
+```bash
+rtk proxy python3 -I -B scripts/test_run_cli.py
+```
+
+日常项目验收采用该项目自己的检查。技能的模型调用规则由入口和引用文件定义，调整路线时需同步核对相关文件。
 
 ## 许可证
 
